@@ -1,0 +1,147 @@
+void Main()
+{
+	var flow = JsonConvert.DeserializeObject<AutoFlowModel>(autoFlow);
+	
+	var sm = new StateMachine<string, string>("initial");
+	
+	if (!flow.States.Any(s => s.Value == "initial")) throw new Exception("all flows must contain an `initial` state");	
+	if (!flow.States.Any(s => s.Value == "final")) throw new Exception("all flows must contain an `final` state");
+
+	foreach (var state in flow.States)
+	{
+		// TODO: ensure triggers cover only existing inputs for transitions
+		// TODO: register triggers
+		// TODO: validate interceptors
+		var state_configuration = sm.Configure(state.Value);
+		// TODO: register interceptors
+		state_configuration.OnEntry(() => Console.WriteLine($"entering {state.Value}"));
+		
+		foreach (var transition in state.Transitions)
+		{
+			foreach (var input in transition.Inputs)
+			{
+				state_configuration.Permit(input, transition.Target);
+			}
+		}
+	}
+	sm.Fire("created");
+	sm.Fire("time");
+}
+
+string autoFlow = @"{
+	""id"": ""system generated"",
+	""name"": ""Welcome email tracking"",
+	""description"": ""send a welcome email and track if it is opened in a time frame"",
+	""states"": [{
+		""value"": ""initial"",
+		""triggers"": [{
+			""type"": ""event"",
+			""triggerCtx"": {},
+			""fire"": ""created""
+		}],
+		""transitions"": [{
+			""inputs"": [""created""],
+			""target"": ""email""
+		}]
+	}, {
+		""value"": ""email"",
+		""onEntry"": [{
+			""actionId"": ""sendEmail"",
+			""actionContext"": {}
+		}],
+		""onTransition"": [{
+			""actionId"": ""trace""
+		}],
+		""triggers"": [{
+			""type"": ""time"",
+			""triggerCtx"": {},
+			""fire"": ""time""
+		}, {
+			""type"": ""event"",
+			""triggerCtx"": {},
+			""fire"": ""<eventId>""
+		}],
+		""transitions"": [{
+			""inputs"": [""time""],
+			""target"": ""final""
+		}, {
+			""inputs"": [""<eventId>""],
+			""target"": ""final""
+		}]
+	}, {
+		""value"": ""final""
+	}]
+}";
+
+
+public class Trigger
+{
+	public Trigger(string type, JObject triggerCtx, string fire)
+	{
+		this.Type = type;
+		this.TriggerCtx = triggerCtx;
+		this.Fire = fire;
+	}
+
+	public string Type { get; }
+	public JObject TriggerCtx { get; }
+	public string Fire { get; }
+}
+
+public class Transition
+{
+	public Transition(List<string> inputs, string target)
+	{
+		this.Inputs = inputs;
+		this.Target = target;
+	}
+
+	public IReadOnlyList<string> Inputs { get; }
+	public string Target { get; }
+}
+
+public class Interceptor
+{
+	public Interceptor(string interceptorType, JObject actionContext)
+	{
+		this.InterceptorType = interceptorType;
+		this.ActionContext = actionContext;
+	}
+
+	public string InterceptorType { get; }
+	public JObject ActionContext { get; }
+}
+
+public class State
+{
+	public State(string value, List<Trigger> triggers, List<Transition> transitions, List<Interceptor> onEntry, List<Interceptor> onTransition)
+	{
+		this.Value = value;
+		this.Triggers = triggers ?? new ();
+		this.Transitions = transitions ?? new ();
+		this.OnEntry = onEntry ?? new ();
+		this.OnTransition = onTransition ?? new ();
+	}
+
+	public string Value { get; }
+	public IReadOnlyList<Trigger> Triggers { get; }
+	public IReadOnlyList<Transition> Transitions { get; }
+	public IReadOnlyList<Interceptor> OnEntry { get; }
+	public IReadOnlyList<Interceptor> OnTransition { get; }
+}
+
+public class AutoFlowModel
+{
+	public string Id { get; }
+	public string Name { get; }
+	public string Description { get; }
+	public IReadOnlyList<State> States { get; }
+	
+	public AutoFlowModel(string id, string name, string description, List<State> states)
+	{
+		this.Id = id;
+		this.Name = name;
+		this.Description = description;
+		this.States = states;
+	}
+}
